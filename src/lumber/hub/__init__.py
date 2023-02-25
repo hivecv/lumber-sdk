@@ -59,11 +59,10 @@ class LumberHubClient:
             for device in devices_response.json():
                 if device["device_uuid"] == self.device_uuid:
                     item._config = device.get("config", item._config)
-                    print({**dict(item), "device_uuid": self.device_uuid})
                     response = requests.put(self.routes.me_device(device["id"]), json={**device, **dict(item)}, headers=self.auth_headers)
                     response.raise_for_status()
                     return item
-            response = requests.post(self.routes.me_devices, json={**dict(item), "device_uuid": self.device_uuid})
+            response = requests.post(self.routes.me_devices, json={**dict(item), "device_uuid": self.device_uuid}, headers=self.auth_headers)
             response.raise_for_status()
             return item
 

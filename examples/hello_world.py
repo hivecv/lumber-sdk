@@ -10,6 +10,7 @@ client.start_heartbeat()
 
 conf = config.DeviceConfig(schema='{"name": "string"}')
 client.register(conf)
+print("Registered!")
 
 try:
     while True:
