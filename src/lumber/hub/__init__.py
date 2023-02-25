@@ -31,8 +31,7 @@ class LumberHubClient:
         self.api_url = api_url
 
         self._init_response = requests.options(self.api_url)
-        if self._init_response.headers.get('server', '') != "uvicorn":
-            raise ValueError("Provided API url - {} - is incorrect (not served by uvicorn). Possible network error!")
+        self._init_response.raise_for_status()
 
         self.routes = Routes(self.api_url)
 
