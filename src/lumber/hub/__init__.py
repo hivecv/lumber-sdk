@@ -6,7 +6,46 @@ from lumber import settings
 from urllib.parse import urljoin
 import requests
 
+from lumber.base import HubEntity
 from lumber.config import DeviceConfig
+
+
+class WatchedItem:
+    _watcherRunning = False
+    _watcher = None
+
+    def __init__(self, url: str, item: HubEntity):
+        self._url = url
+        if item.client is None:
+            raise ValueError("Item not registered in HubClient instance!")
+        self._item = item
+
+    def fetch_api(self):
+        devices_response = requests.get(self._url, headers=self._item.client.auth_headers)
+        devices_response.raise_for_status()
+        return devices_response.json()
+
+    def update(self, api_data: dict = None):
+        if api_data is None:
+            api_data = self.fetch_api()
+        if self._item.should_update(api_data):
+            self._item.on_update(api_data)
+
+    @staticmethod
+    def _watcher_thread(instance):
+        while instance._watcherRunning:
+            instance.update()
+            time.sleep(5)
+
+    def watch(self):
+        self._watcherRunning = True
+        self._watcher = Thread(target=WatchedItem._watcher_thread, args=(self, ))
+        self._watcher.daemon = True
+        self._watcher.start()
+
+    def unwatch(self):
+        self._watcherRunning = False
+        self._watcher.join()
 
 
 class Routes:
@@ -26,6 +65,8 @@ class LumberHubClient:
 
     _heartbeat = None
     _heartbeat_running = False
+
+    _watched = []
 
     def __init__(self, credentials, api_url=settings.get('api_url'), device_uuid=settings.get('device_uuid')):
         self.api_url = api_url
@@ -52,7 +93,9 @@ class LumberHubClient:
             return {}
         return {"Authorization": f"{self.auth['token_type'].capitalize()} {self.auth['access_token']}"}
 
-    def register(self, item):
+    def register(self, item: HubEntity):
+        item.register_client(self)
+
         if isinstance(item, DeviceConfig):
             devices_response = requests.get(self.routes.me_devices, headers=self.auth_headers)
             devices_response.raise_for_status()
@@ -61,10 +104,12 @@ class LumberHubClient:
                     item._config = device.get("config", item._config)
                     response = requests.put(self.routes.me_device(device["id"]), json={**device, **dict(item)}, headers=self.auth_headers)
                     response.raise_for_status()
-                    return item
+                    item.on_update(response.json())
+                    return WatchedItem(self.routes.me_device(device["id"]), item)
             response = requests.post(self.routes.me_devices, json={**dict(item), "device_uuid": self.device_uuid}, headers=self.auth_headers)
             response.raise_for_status()
-            return item
+            item.on_update(response.json())
+            return WatchedItem(self.routes.me_device(item.raw["id"]), item)
 
     def _heartbeat_thread(self):
         while self._heartbeat_running:

@@ -8,13 +8,15 @@ client = hub.LumberHubClient(
 )
 client.start_heartbeat()
 
-conf = config.DeviceConfig(schema='{"name": "string"}')
-client.register(conf)
-print("Registered!")
+conf = config.DeviceConfig(schema='{"name": "string", "debug": "number"}')
+watcher = client.register(conf)
+watcher.watch()
+print("Registered config!")
 
 try:
     while True:
-        time.sleep(1)
+        print(f"Config valid: {conf.is_valid()}, schema: {conf._schema}, data: {conf._config}")
+        time.sleep(2)
 except KeyboardInterrupt:
     pass
 
