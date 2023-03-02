@@ -34,7 +34,10 @@ class WatchedItem:
     @staticmethod
     def _watcher_thread(instance):
         while instance._watcherRunning:
-            instance.update()
+            try:
+                instance.update()
+            except:
+                pass
             time.sleep(5)
 
     def watch(self):
@@ -49,14 +52,15 @@ class WatchedItem:
 
 
 class Routes:
-    def __init__(self, api_url):
+    def __init__(self, api_url, device_uuid):
         self.token = urljoin(api_url, "token/")
         self.users = urljoin(api_url, "users/")
         self.devices = urljoin(api_url, "devices/")
         self.me = urljoin(api_url, "users/me/")
         self.me_devices = urljoin(api_url, "users/me/devices/")
         self.me_device = lambda device_id: urljoin(api_url, f"users/me/devices/{device_id}/")
-        self.me_device_heartbeat = lambda device_id: urljoin(api_url, f"users/me/devices/{device_id}/heartbeat/")
+        self.device_heartbeat = urljoin(api_url, f"users/me/devices/{device_uuid}/heartbeat/")
+        self.device_logs = urljoin(api_url, f"users/me/devices/{device_uuid}/logs/")
 
 
 class LumberHubClient:
@@ -70,13 +74,14 @@ class LumberHubClient:
 
     def __init__(self, credentials, api_url=settings.get('api_url'), device_uuid=settings.get('device_uuid')):
         self.api_url = api_url
+        self.device_uuid = device_uuid
 
         try:
             self._init_response = requests.options(self.api_url)
         except ConnectionError:
             raise ValueError("Provided API url - {} - is incorrect (not served by uvicorn). Possible network error!".format(self.api_url))
 
-        self.routes = Routes(self.api_url)
+        self.routes = Routes(self.api_url, self.device_uuid)
 
         self._token_response = requests.post(self.routes.token, json=credentials)
         self._token_response.raise_for_status()
@@ -84,8 +89,6 @@ class LumberHubClient:
 
         self._me_response = requests.get(self.routes.me, headers=self.auth_headers)
         self._me_response.raise_for_status()
-
-        self.device_uuid = device_uuid
 
     @property
     def auth_headers(self):
@@ -114,9 +117,9 @@ class LumberHubClient:
     def _heartbeat_thread(self):
         while self._heartbeat_running:
             try:
-                requests.patch(self.routes.me_device_heartbeat(self.device_uuid), headers=self.auth_headers)
+                requests.patch(self.routes.device_heartbeat, headers=self.auth_headers)
             except:
-                traceback.print_exc()
+                pass
 
             time.sleep(1)
 
