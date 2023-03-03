@@ -4,7 +4,7 @@ from lumber.tools import LumberLogHandler
 
 client = hub.LumberHubClient(
     credentials={"email": "test@test.com", "password": "zaq1@WSX"},
-    api_url="http://localhost:8000/"
+    # api_url="http://localhost:8000/"
 )
 client.start_heartbeat()
 LumberLogHandler(client).enable()
