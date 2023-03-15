@@ -1,24 +1,25 @@
-import time
 import traceback
-from threading import Thread
 
 from lumber import settings
 from urllib.parse import urljoin
 import requests
-
+from requests.exceptions import ConnectionError
 from lumber.base import HubEntity
 from lumber.config import DeviceConfig
+from lumber.hub.actions import HubActions
+from lumber.hub.heartbeat import Heartbeat
 
 
-class WatchedItem:
+class WatchedItem(Heartbeat):
     _watcherRunning = False
     _watcher = None
 
-    def __init__(self, url: str, item: HubEntity):
+    def __init__(self, url: str, item: HubEntity, frequency=0.2):
         self._url = url
         if item.client is None:
             raise ValueError("Item not registered in HubClient instance!")
         self._item = item
+        super().__init__(self.update, frequency=frequency)
 
     def fetch_api(self):
         devices_response = requests.get(self._url, headers=self._item.client.auth_headers)
@@ -26,29 +27,13 @@ class WatchedItem:
         return devices_response.json()
 
     def update(self, api_data: dict = None):
-        if api_data is None:
-            api_data = self.fetch_api()
-        if self._item.should_update(api_data):
-            self._item.on_update(api_data)
-
-    @staticmethod
-    def _watcher_thread(instance):
-        while instance._watcherRunning:
-            try:
-                instance.update()
-            except:
-                pass
-            time.sleep(5)
-
-    def watch(self):
-        self._watcherRunning = True
-        self._watcher = Thread(target=WatchedItem._watcher_thread, args=(self, ))
-        self._watcher.daemon = True
-        self._watcher.start()
-
-    def unwatch(self):
-        self._watcherRunning = False
-        self._watcher.join()
+        try:
+            if api_data is None:
+                api_data = self.fetch_api()
+            if self._item.should_update(api_data):
+                self._item.on_update(api_data)
+        except Exception:
+            traceback.print_exc()
 
 
 class Routes:
@@ -61,6 +46,7 @@ class Routes:
         self.me_device = lambda device_id: urljoin(api_url, f"users/me/devices/{device_id}/")
         self.device_heartbeat = urljoin(api_url, f"users/me/devices/{device_uuid}/heartbeat/")
         self.device_logs = urljoin(api_url, f"users/me/devices/{device_uuid}/logs/")
+        self.device_actions = urljoin(api_url, f"users/me/devices/{device_uuid}/actions/")
 
 
 class LumberHubClient:
@@ -68,9 +54,7 @@ class LumberHubClient:
     auth = None
 
     _heartbeat = None
-    _heartbeat_running = False
-
-    _watched = []
+    _actions = None
 
     def __init__(self, credentials, api_url=settings.get('api_url'), device_uuid=settings.get('device_uuid')):
         self.api_url = api_url
@@ -79,7 +63,7 @@ class LumberHubClient:
         try:
             self._init_response = requests.options(self.api_url)
         except ConnectionError:
-            raise ValueError("Provided API url - {} - is incorrect (not served by uvicorn). Possible network error!".format(self.api_url))
+            raise ValueError("Provided API url - {} - is incorrect, possible network error!".format(self.api_url)) from None  # to clear the callstack
 
         self.routes = Routes(self.api_url, self.device_uuid)
 
@@ -89,6 +73,15 @@ class LumberHubClient:
 
         self._me_response = requests.get(self.routes.me, headers=self.auth_headers)
         self._me_response.raise_for_status()
+
+        self._heartbeat = Heartbeat(
+            on_beat=lambda: requests.patch(self.routes.device_heartbeat, headers=self.auth_headers)
+        )
+        self._heartbeat.start()
+
+        self._actions = HubActions()
+        self._actions.register_client(self)
+        WatchedItem(self.routes.device_actions, self._actions, frequency=1).start()
 
     @property
     def auth_headers(self):
@@ -108,30 +101,11 @@ class LumberHubClient:
                     response = requests.put(self.routes.me_device(device["id"]), json={**device, **dict(item)}, headers=self.auth_headers)
                     response.raise_for_status()
                     item.on_update(response.json())
-                    return WatchedItem(self.routes.me_device(device["id"]), item)
+                    WatchedItem(self.routes.me_device(device["id"]), item).start()
             response = requests.post(self.routes.me_devices, json={**dict(item), "device_uuid": self.device_uuid}, headers=self.auth_headers)
             response.raise_for_status()
             item.on_update(response.json())
-            return WatchedItem(self.routes.me_device(item.raw["id"]), item)
-
-    def _heartbeat_thread(self):
-        while self._heartbeat_running:
-            try:
-                requests.patch(self.routes.device_heartbeat, headers=self.auth_headers)
-            except:
-                pass
-
-            time.sleep(1)
-
-    def start_heartbeat(self):
-        self._heartbeat_running = True
-        self._heartbeat = Thread(target=self._heartbeat_thread)
-        self._heartbeat.daemon = True
-        self._heartbeat.start()
-
-    def stop_heartbeat(self):
-        self._heartbeat_running = False
-        self._heartbeat.join()
+            WatchedItem(self.routes.me_device(item.raw["id"]), item).start()
 
 
 

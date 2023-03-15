@@ -1,0 +1,4 @@
+--prefer-binary
+--extra-index-url https://www.piwheels.org/simple
+opencv-python
+depthai

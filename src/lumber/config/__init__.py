@@ -20,6 +20,7 @@ class DeviceConfig(HubEntity):
         return self._config != api_data['config']
 
     def on_update(self, api_data):
+        super().on_update(api_data)
         self._config = json.loads(api_data['config']) if api_data['config'] else {}
 
     def get_validation_schema(self):
