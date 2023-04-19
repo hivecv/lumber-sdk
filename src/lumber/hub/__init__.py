@@ -33,7 +33,8 @@ class WatchedItem(Heartbeat):
             if self._item.should_update(api_data):
                 self._item.on_update(api_data)
         except Exception:
-            traceback.print_exc()
+            pass
+            # traceback.print_exc()
 
 
 class Routes:
@@ -107,5 +108,7 @@ class LumberHubClient:
             item.on_update(response.json())
             WatchedItem(self.routes.me_device(item.raw["id"]), item).start()
 
+    def send_action(self, payload):
+        pass
 
 

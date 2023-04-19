@@ -39,6 +39,7 @@ class DeviceConfig(HubEntity):
             schema = self.get_validation_schema()
             if strict:
                 schema['required'] = list(schema['properties'].keys())
+            print(self._config, schema)
             validate(self._config, schema)
             return True
         except ValidationError:

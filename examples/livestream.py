@@ -24,21 +24,24 @@ if not conf.is_valid():
 live = LiveStream(client)
 live.start()
 
-pipeline = dai.Pipeline()
-xoutRgb = pipeline.create(dai.node.XLinkOut)
-xoutRgb.setStreamName("rgb")
+# pipeline = dai.Pipeline()
+# xoutRgb = pipeline.create(dai.node.XLinkOut)
+# xoutRgb.setStreamName("rgb")
+#
+# camRgb = pipeline.create(dai.node.ColorCamera)
+# camRgb.setPreviewSize(300, 300)
+# camRgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.RGB)
+# camRgb.preview.link(xoutRgb.input)
 
-camRgb = pipeline.create(dai.node.ColorCamera)
-camRgb.setPreviewSize(300, 300)
-camRgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.RGB)
-camRgb.preview.link(xoutRgb.input)
+while True:
+    time.sleep(1)
 
-with dai.Device(pipeline) as device:
-
-    qRgb = device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
-
-    while True:
-        inRgb = qRgb.get()
+# with dai.Device(pipeline) as device:
+#
+#     qRgb = device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
+#
+#     while True:
+#         inRgb = qRgb.get()
         # frame = inRgb.getCvFrame()
         # cv2.imshow("rgb", frame)
         #
