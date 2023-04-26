@@ -33,7 +33,7 @@ class WatchedItem:
 
     @staticmethod
     def _watcher_thread(instance):
-        while instance._watcherRunning:
+        while getattr(instance, "_watcherRunning", False):
             try:
                 instance.update()
             except:
@@ -53,14 +53,15 @@ class WatchedItem:
 
 class Routes:
     def __init__(self, api_url, device_uuid):
-        self.token = urljoin(api_url, "token/")
+        self.login = urljoin(api_url, "login/")
         self.users = urljoin(api_url, "users/")
-        self.devices = urljoin(api_url, "devices/")
         self.me = urljoin(api_url, "users/me/")
-        self.me_devices = urljoin(api_url, "users/me/devices/")
-        self.me_device = lambda device_id: urljoin(api_url, f"users/me/devices/{device_id}/")
-        self.device_heartbeat = urljoin(api_url, f"users/me/devices/{device_uuid}/heartbeat/")
-        self.device_logs = urljoin(api_url, f"users/me/devices/{device_uuid}/logs/")
+        self.devices = urljoin(api_url, "devices/")
+        self.device = urljoin(api_url, f"devices/{device_uuid}/")
+        self.device_heartbeat = urljoin(api_url, f"devices/{device_uuid}/heartbeat/")
+        self.device_logs = urljoin(api_url, f"devices/{device_uuid}/logs/")
+        self.device_configs = urljoin(api_url, f"devices/{device_uuid}/configs/")
+        self.device_config = lambda config_id: urljoin(api_url, f"devices/{device_uuid}/configs/{config_id}/")
 
 
 class LumberHubClient:
@@ -77,18 +78,19 @@ class LumberHubClient:
         self.device_uuid = device_uuid
 
         try:
-            self._init_response = requests.options(self.api_url)
+            self.routes = Routes(self.api_url, self.device_uuid)
+
+            self._login_response = requests.post(self.routes.login, json=credentials)
+            self._login_response.raise_for_status()
+            self.auth = self._login_response.json()
+
+            self._me_response = requests.get(self.routes.me, headers=self.auth_headers)
+            self._me_response.raise_for_status()
+
+            response = requests.post(self.routes.devices, json={"device_uuid": self.device_uuid}, headers=self.auth_headers)
+            response.raise_for_status()
         except ConnectionError:
             raise ValueError("Provided API url - {} - is incorrect (not served by uvicorn). Possible network error!".format(self.api_url))
-
-        self.routes = Routes(self.api_url, self.device_uuid)
-
-        self._token_response = requests.post(self.routes.token, json=credentials)
-        self._token_response.raise_for_status()
-        self.auth = self._token_response.json()
-
-        self._me_response = requests.get(self.routes.me, headers=self.auth_headers)
-        self._me_response.raise_for_status()
 
     @property
     def auth_headers(self):
@@ -100,19 +102,16 @@ class LumberHubClient:
         item.register_client(self)
 
         if isinstance(item, DeviceConfig):
-            devices_response = requests.get(self.routes.me_devices, headers=self.auth_headers)
-            devices_response.raise_for_status()
-            for device in devices_response.json():
-                if device["device_uuid"] == self.device_uuid:
-                    item._config = device.get("config", item._config)
-                    response = requests.put(self.routes.me_device(device["id"]), json={**device, **dict(item)}, headers=self.auth_headers)
-                    response.raise_for_status()
-                    item.on_update(response.json())
-                    return WatchedItem(self.routes.me_device(device["id"]), item)
-            response = requests.post(self.routes.me_devices, json={**dict(item), "device_uuid": self.device_uuid}, headers=self.auth_headers)
+            configs_response = requests.get(self.routes.device_configs, headers=self.auth_headers)
+            configs_response.raise_for_status()
+            for config in configs_response.json():
+                if item.is_matching(config):
+                    return WatchedItem(self.routes.device_config(config["id"]), item)
+
+            response = requests.post(self.routes.device_configs, json=dict(item), headers=self.auth_headers)
             response.raise_for_status()
-            item.on_update(response.json())
-            return WatchedItem(self.routes.me_device(item.raw["id"]), item)
+            data = response.json()
+            return WatchedItem(self.routes.device_config(data["id"]), item)
 
     def _heartbeat_thread(self):
         while self._heartbeat_running:

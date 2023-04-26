@@ -1,5 +1,3 @@
-import json
-
 from lumber.base import HubEntity
 from jsonschema import validate, ValidationError
 
@@ -14,20 +12,26 @@ class DeviceConfig(HubEntity):
     def __iter__(self):
         yield 'config_schema', self._schema
 
+    def is_matching(self, other):
+        if isinstance(other, dict):
+            return 'config_schema' in other and self._schema == other['config_schema']
+        return False
+
     def should_update(self, api_data):
-        if 'config' not in api_data:
+        if not super().should_update(api_data) or 'config' not in api_data:
             return False
         return self._config != api_data['config']
 
     def on_update(self, api_data):
-        self._config = json.loads(api_data['config']) if api_data['config'] else {}
+        super().on_update(api_data)
+        self._config = api_data['config']
 
     def get_validation_schema(self):
         return {
             "type": "object",
             "properties": {
                 field_name: {"type": field_type}
-                for field_name, field_type in json.loads(self._schema).items()
+                for field_name, field_type in self._schema.items()
             },
         }
 
