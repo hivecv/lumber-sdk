@@ -1,7 +1,7 @@
 import uuid
 
 __defaults = {
-    "api_url": "http://hub.hivecv.com/api/",
+    "api_url": "https://hub.hivecv.com/api/",
     "device_uuid": uuid.UUID(int=uuid.getnode()).hex,
 }
 
